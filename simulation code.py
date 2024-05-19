@@ -10,13 +10,14 @@ class IoTNetworkSimulator:
         self.client = None
         self.client_id = client_id
 
-    def connect_to_broker(self, broker_address, port):
+    def connect_to_broker(self, broker_address, port, username=None, password=None):
         try:
             self.client = mqtt.Client(client_id=self.client_id)
             # Enable TLS/SSL
             self.client.tls_set_context(ssl.create_default_context())
             # Set username and password (optional)
-            self.client.username_pw_set(username="your_username", password="your_password")
+            if username and password:
+                self.client.username_pw_set(username=username, password=password)
             self.client.on_connect = self.on_connect
             self.client.on_message = self.on_message
             self.client.connect(broker_address, port)
@@ -50,15 +51,30 @@ class IoTNetworkSimulator:
     def on_message(self, client, userdata, msg):
         print(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
 
+    def disconnect(self):
+        if self.client:
+            self.client.disconnect()
+            print("Disconnected from MQTT broker.")
+        else:
+            print("Error: Not connected to MQTT broker.")
+
 if __name__ == "__main__":
     # Initialize the simulator with a unique client ID
     simulator = IoTNetworkSimulator("client001")
 
     # Connect to MQTT broker securely
-    simulator.connect_to_broker("localhost", 8883)  # Assuming Mosquitto is running locally on the default port 1883
+    broker_address = "192.168.43.188"
+    port = 1883
+    username = "your_username"
+    password = "your_password"
+    simulator.connect_to_broker(broker_address, port, username, password)
 
     # Subscribe to topics
     simulator.subscribe_to_topics(["test/topic"])
 
     # Publish a message
     simulator.publish_message("test/topic", "Hello from simulator!")
+
+    # Disconnect from MQTT broker
+    simulator.disconnect()
+
