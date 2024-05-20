@@ -15,7 +15,7 @@ class IoTNetworkSimulator:
             self.client = mqtt.Client(client_id=self.client_id)
             # Enable TLS/SSL
             self.client.tls_set_context(ssl.create_default_context())
-            # Set username and password (optional)
+            # Set username and password 
             if username and password:
                 self.client.username_pw_set(username=username, password=password)
             self.client.on_connect = self.on_connect
