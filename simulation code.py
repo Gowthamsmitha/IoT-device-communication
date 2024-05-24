@@ -1,80 +1,82 @@
+import random
 import paho.mqtt.client as mqtt
-import ssl
-import warnings
+import time
+class IoTDevice:
+    def __init__(self, device_id, device_type, mqtt_client, topic, token):
+        self.device_id = device_id
+        self.device_type = device_type
+        self.mqtt_client = mqtt_client
+        self.topic = topic
+        self.token = token
+        self.authenticated = False
 
-# Ignore DeprecationWarning
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-class IoTNetworkSimulator:
-    def __init__(self, client_id):
-        self.client = None
-        self.client_id = client_id
-
-    def connect_to_broker(self, broker_address, port, username=None, password=None):
-        try:
-            self.client = mqtt.Client(client_id=self.client_id)
-            # Enable TLS/SSL
-            self.client.tls_set_context(ssl.create_default_context())
-            # Set username and password 
-            if username and password:
-                self.client.username_pw_set(username=username, password=password)
-            self.client.on_connect = self.on_connect
-            self.client.on_message = self.on_message
-            self.client.connect(broker_address, port)
-            print("Connected to MQTT broker securely.")
-            self.client.loop_start()
-        except ConnectionRefusedError:
-            print("Connection refused: Check if the MQTT broker is running.")
-        except OSError as e:
-            print(f"Error connecting to MQTT broker: {e}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-
-    def subscribe_to_topics(self, topics):
-        if self.client:
-            for topic in topics:
-                self.client.subscribe(topic)
-            print("Subscribed to topics:", topics)
+    def authenticate(self, password): #here were are just simply comparing password with the entry from user. For eg, if I type a password, it will check whether it is matching with gowtham123
+        if password == "gowtham123":
+            self.authenticated = True
+            print(f"Device {self.device_id}: Authenticated successfully.")
         else:
-            print("Error: Not connected to MQTT broker.")
+            print(f"Device {self.device_id}: Authentication failed.")
 
-    def publish_message(self, topic, message):
-        if self.client:
-            self.client.publish(topic, message)
-            print(f"Published message on topic {topic}: {message}")
+    def send_message(self, message, token):
+        if self.authenticated:
+            self.mqtt_client.publish(self.topic, message)
         else:
-            print("Error: Not connected to MQTT broker.")
+            print(f"Device {self.device_id}: Not authenticated. Message not sent.")
 
-    def on_connect(self, client, userdata, flags, rc):
-        print("Connected to MQTT broker with result code " + str(rc))
+class TemperatureSensor(IoTDevice):
+    def __init__(self, device_id, mqtt_client, topic, token):
+        super().__init__(device_id, 'TemperatureSensor', mqtt_client, topic, token)
 
-    def on_message(self, client, userdata, msg):
-        print(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
+    def read_temperature(self):
+        return round(random.uniform(20.0, 30.0), 2)
 
-    def disconnect(self):
-        if self.client:
-            self.client.disconnect()
-            print("Disconnected from MQTT broker.")
+class LightSwitch(IoTDevice):
+    def __init__(self, device_id, mqtt_client, topic, token):
+        super().__init__(device_id, 'LightSwitch', mqtt_client, topic, token)
+
+    def toggle(self, state):
+        return "ON" if state else "OFF"
+
+def on_connect(client, userdata, flags, rc):
+    print("Connected with result code " + str(rc))
+
+def on_message(client, userdata, msg):
+    print(f"Message received on topic {msg.topic}: {msg.payload.decode()}")
+
+qtt_client = mqtt.Client()
+mqtt_client.on_connect = on_connect
+mqtt_client.on_message = on_message
+# Connect to an external MQTT broker
+mqtt_client.connect("test.mosquitto.org", 1883, 60)
+mqtt_client.loop_start()
+
+def main():
+    token = "securetoken"
+    temp_sensor = TemperatureSensor("sensor1", mqtt_client, "home/temperature", token)
+    light_switch = LightSwitch("switch1", mqtt_client, "home/light", token)
+
+    authenticated = False
+    while not authenticated:
+        password = input("Enter password: ")
+        temp_sensor.authenticate(password)
+        light_switch.authenticate(password)
+        authenticated = temp_sensor.authenticated and light_switch.authenticated
+
+    while True:
+        print("\n1. Read Temperature\n2. Toggle Light\n3. Exit")
+        choice = input("Enter your choice: ")
+
+        if choice == '1':
+            temperature = temp_sensor.read_temperature()
+            temp_sensor.send_message(f"Temperature: {temperature}°C", token)
+        elif choice == '2':
+            state = input("Enter state (on/off): ").strip().lower() == 'on'
+            status = light_switch.toggle(state)
+            light_switch.send_message(f"Light is {status}", token)
+        elif choice == '3':
+            break
         else:
-            print("Error: Not connected to MQTT broker.")
+            print("Invalid choice. Please try again.")
 
 if __name__ == "__main__":
-    # Initialize the simulator with a unique client ID
-    simulator = IoTNetworkSimulator("client001")
-
-    # Connect to MQTT broker securely
-    broker_address = "192.168.43.188"
-    port = 1883
-    username = "your_username"
-    password = "your_password"
-    simulator.connect_to_broker(broker_address, port, username, password)
-
-    # Subscribe to topics
-    simulator.subscribe_to_topics(["test/topic"])
-
-    # Publish a message
-    simulator.publish_message("test/topic", "Hello from simulator!")
-
-    # Disconnect from MQTT broker
-    simulator.disconnect()
-
+    main()
