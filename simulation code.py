@@ -1,6 +1,12 @@
+import os
 import random
+import hashlib
 import paho.mqtt.client as mqtt
-import time
+
+from dotenv import load_dotenv
+
+load_dotenv("/content/secure.env")
+
 class IoTDevice:
     def __init__(self, device_id, device_type, mqtt_client, topic, token):
         self.device_id = device_id
@@ -10,56 +16,53 @@ class IoTDevice:
         self.token = token
         self.authenticated = False
 
-    def authenticate(self, password): #here were are just simply comparing password with the entry from user. For eg, if I type a password, it will check whether it is matching with gowtham123
-        if password == "gowtham123":
+    def authenticate(self, username, password):
+        hashed_username = hashlib.sha256(username.encode()).hexdigest()
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        if hashed_username == os.getenv("DEVICE_USERNAME_HASH") and hashed_password == os.getenv("DEVICE_PASSWORD_HASH"):
             self.authenticated = True
             print(f"Device {self.device_id}: Authenticated successfully.")
         else:
             print(f"Device {self.device_id}: Authentication failed.")
 
-    def send_message(self, message, token):
-        if self.authenticated:
-            self.mqtt_client.publish(self.topic, message)
-        else:
-            print(f"Device {self.device_id}: Not authenticated. Message not sent.")
+    def send_message(self, message):
+        self.mqtt_client.publish(self.topic, message)
 
 class TemperatureSensor(IoTDevice):
-    def __init__(self, device_id, mqtt_client, topic, token):
-        super().__init__(device_id, 'TemperatureSensor', mqtt_client, topic, token)
-
     def read_temperature(self):
-        return round(random.uniform(20.0, 30.0), 2)
+        return random.uniform(20.0, 25.0)  # Simulate reading temperature
 
 class LightSwitch(IoTDevice):
-    def __init__(self, device_id, mqtt_client, topic, token):
-        super().__init__(device_id, 'LightSwitch', mqtt_client, topic, token)
-
     def toggle(self, state):
-        return "ON" if state else "OFF"
+        return "on" if state else "off"
 
 def on_connect(client, userdata, flags, rc):
-    print("Connected with result code " + str(rc))
-
-def on_message(client, userdata, msg):
-    print(f"Message received on topic {msg.topic}: {msg.payload.decode()}")
-
-qtt_client = mqtt.Client()
-mqtt_client.on_connect = on_connect
-mqtt_client.on_message = on_message
-# Connect to an external MQTT broker
-mqtt_client.connect("test.mosquitto.org", 1883, 60)
-mqtt_client.loop_start()
+    if rc == 0:
+        print("Connected to MQTT Broker!")
+    else:
+        print(f"Failed to connect, return code {rc}")
 
 def main():
-    token = "securetoken"
-    temp_sensor = TemperatureSensor("sensor1", mqtt_client, "home/temperature", token)
-    light_switch = LightSwitch("switch1", mqtt_client, "home/light", token)
+    broker = os.getenv("MQTT_BROKER")
+    port = int(os.getenv("MQTT_PORT"))
+    topic = os.getenv("MQTT_TOPIC")
+    token = os.getenv("MQTT_PASSWORD")
+
+    mqtt_client = mqtt.Client()
+    mqtt_client.on_connect = on_connect
+    mqtt_client.username_pw_set(username=os.getenv("MQTT_USERNAME"), password=token)
+    mqtt_client.connect(broker, port)
+    mqtt_client.loop_start()
+
+    temp_sensor = TemperatureSensor("sensor1", "temperature", mqtt_client, topic, token)
+    light_switch = LightSwitch("switch1", "light", mqtt_client, topic, token)
 
     authenticated = False
     while not authenticated:
+        username = input("Enter username: ")
         password = input("Enter password: ")
-        temp_sensor.authenticate(password)
-        light_switch.authenticate(password)
+        temp_sensor.authenticate(username, password)
+        light_switch.authenticate(username, password)
         authenticated = temp_sensor.authenticated and light_switch.authenticated
 
     while True:
@@ -68,11 +71,11 @@ def main():
 
         if choice == '1':
             temperature = temp_sensor.read_temperature()
-            temp_sensor.send_message(f"Temperature: {temperature}°C", token)
+            temp_sensor.send_message(f"Temperature: {temperature}°C")
         elif choice == '2':
             state = input("Enter state (on/off): ").strip().lower() == 'on'
             status = light_switch.toggle(state)
-            light_switch.send_message(f"Light is {status}", token)
+            light_switch.send_message(f"Light is {status}")
         elif choice == '3':
             break
         else:
