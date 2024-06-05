@@ -1,6 +1,7 @@
 import os
 import random
 import hashlib
+import time
 import paho.mqtt.client as mqtt
 
 from dotenv import load_dotenv
@@ -42,6 +43,19 @@ def on_connect(client, userdata, flags, rc):
     else:
         print(f"Failed to connect, return code {rc}")
 
+def connect_mqtt(client, broker, port, retries=5, delay=5):
+    attempts = 0
+    while attempts < retries:
+        try:
+            client.connect(broker, port)
+            client.loop_start()
+            return True
+        except Exception as e:
+            attempts += 1
+            print(f"Connection attempt {attempts} failed: {e}")
+            time.sleep(delay)
+    return False
+
 def main():
     broker = os.getenv("MQTT_BROKER")
     port = int(os.getenv("MQTT_PORT"))
@@ -51,8 +65,10 @@ def main():
     mqtt_client = mqtt.Client()
     mqtt_client.on_connect = on_connect
     mqtt_client.username_pw_set(username=os.getenv("MQTT_USERNAME"), password=token)
-    mqtt_client.connect(broker, port)
-    mqtt_client.loop_start()
+
+    if not connect_mqtt(mqtt_client, broker, port):
+        print("Failed to connect to MQTT broker after several attempts.")
+        return
 
     temp_sensor = TemperatureSensor("sensor1", "temperature", mqtt_client, topic, token)
     light_switch = LightSwitch("switch1", "light", mqtt_client, topic, token)
